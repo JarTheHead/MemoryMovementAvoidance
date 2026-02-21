@@ -30,9 +30,11 @@ echo "Zswap pool limit set to 20% of RAM."
 echo 10 > /proc/sys/vm/swappiness
 echo "Swappiness set to 10 (low tendency to swap)."
 
+
+
 # Create a control group for limiting memory
 CGROUP_DIR="/sys/fs/cgroup/memory/movement_avoidance_test"
-mkdir -p "$CGROUP_DIR"
+cgcreate -g memory:movement_avoidance_test
 echo "Created cgroup at $CGROUP_DIR"
 
 # Set memory limit to 512MB for testing (adjust as needed)
