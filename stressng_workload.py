@@ -144,7 +144,8 @@ class StressNGWorkload:
             result["stderr"] = process.stderr
             result["returncode"] = process.returncode
 
-            if process.returncode == 0 or process.returncode == 0:  # stress-ng returns 0 on timeout
+            # stress-ng returns 0 on success or timeout (when --timeout is used)
+            if process.returncode == 0:
                 result["success"] = True
                 result["metrics"] = self._parse_stressng_output(process.stderr)
             else:
