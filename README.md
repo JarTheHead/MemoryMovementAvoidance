@@ -36,6 +36,7 @@ The goal is to prove that compressing data in memory allows the system to hold m
 | Adaptive Compressor | `adaptive_compressor.c` | Cycles through lzo/lz4/zstd based on system metrics |
 | Memory Workload | `workload.py` | Generates pressure by allocating blocks, modifying data |
 | Memory Workload (C) | `allocate_memory.c` | High-performance memory allocator with configurable size |
+| CPU Workload | `cpu_workload.py` | Controlled CPU contention (0-100%) with Python-based workers |
 | StressNG Workload | `stressng_workload.py` | Synthetic sweep testing with pattern/contention variables |
 | Real Workloads | `real_workloads.py` | Redis benchmark and llama.cpp inference managers |
 | Logger | `logger.py` | Logs metrics to `movement_avoidance_results.csv` |
@@ -47,6 +48,7 @@ The goal is to prove that compressing data in memory allows the system to hold m
 - **Dynamic Compression Control**: Automatically adjusts Zswap pool (5-50%) based on system pressure
 - **NUMA-Aware Monitoring**: Tracks per-node memory usage and cross-node access rates
 - **Adaptive Algorithm Selection**: Cycles through compression algorithms (lzo, lz4, zstd) based on CPU/memory pressure
+- **CPU Workload Control**: Independent CPU contention control (0-100%) via Python workers or stress-ng
 - **Synthetic Testing**: stress-ng sweep across memory patterns and CPU contention
 - **Real Workload Validation**: Redis latency measurements and llama.cpp throughput testing
 - **High-Performance C Implementations**: Critical monitoring paths optimized in C
@@ -103,11 +105,11 @@ The controller will:
 - Dynamically adjust compression levels and algorithm
 - Log metrics to `movement_avoidance_results.csv`
 
-### Step 3: Run the Workload
+### Step 3: Run the Memory Workload
 
-**Python workload:**
+**Python memory workload:**
 ```bash
-sudo cgexec -g memory:movement_avoidance_test python3 workload.py
+sudo cgexec -g memory:movement_avoidance_test python3 memory_workload.py
 ```
 
 **C workload with 1GB limit, 4KB blocks:**
@@ -116,7 +118,7 @@ gcc -O3 -o allocate_memory allocate_memory.c
 sudo cgexec -g memory:movement_avoidance_test ./allocate_memory 1G 4K
 ```
 
-The workload will:
+The memory workload will:
 - Allocate large chunks of memory within cgroup limits
 - Continuously modify data to create memory pressure
 - Trigger compression via memory pressure
@@ -125,10 +127,10 @@ The workload will:
 
 ```bash
 # Test different memory patterns and CPU contention
-python3 stressng_workload.py --duration 30 --pattern random --contention 50
+python3 stressng_memory_workload.py --duration 30 --pattern random --contention 50
 
 # Full sweep across all combinations
-python3 stressng_workload.py --duration 60
+python3 stressng_memory_workload.py --duration 60
 ```
 
 ### Step 5: Monitor Results
@@ -161,16 +163,16 @@ This creates charts showing:
 ### Redis Benchmark
 ```bash
 # With sweep across configurations
-python3 real_workloads.py --workload redis --action sweep
+python3 real_memory_workloads.py --workload redis --action sweep
 
 # Single benchmark
-python3 real_workloads.py --workload redis --action bench
+python3 real_memory_workloads.py --workload redis --action bench
 ```
 
 ### Llama.cpp Inference
 ```bash
 # Throughput sweep across token counts
-python3 real_workloads.py --workload llama --action sweep --model /path/to/model.gguf
+python3 real_memory_workloads.py --workload llama --action sweep --model /path/to/model.gguf
 ```
 
 ## Expected Results
