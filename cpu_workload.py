@@ -58,7 +58,7 @@ class CPUWorkloadGenerator:
         # Duty cycle = (contention / 100) * total_cycle
         # For simplicity, use 100ms total cycle
         total_cycle_ms = 100
-        duty_cycle_ms = int(contention_pct)
+        duty_cycle_ms = int((contention_pct / 100.0) * total_cycle_ms)
         sleep_cycle_ms = total_cycle_ms - duty_cycle_ms
 
         return worker_count, duty_cycle_ms, sleep_cycle_ms
@@ -115,9 +115,6 @@ class CPUWorkloadGenerator:
         """Update contention level while running"""
         self.start_workers(new_contention_pct)
 
-    def get_actual_contention(self):
-        """Measure actual CPU utilization"""
-        return psutil.cpu_percent(interval=0.1)
 
     def run_contention_sweep(self, contentions, duration_per_test=10):
         """
