@@ -9,10 +9,10 @@ The goal is to prove that compressing data in memory allows the system to hold m
 ## Architecture
 
 ```
-┌──────────────────┐     ┌──────────────────┐     ┌──────────────────┐
-│ workload.py      │────>│ controller.py    │────>│ setup.sh         │
-│ (memory stress)  │     │ (dynamic control)│     │ (Zswap/cgroup)   │
-└──────────────────┘     └──────────────────┘     └──────────────────┘
+┌─────────────────────────┐     ┌──────────────────┐     ┌───────────────────────┐
+│ memory_workload.py      │────>│ controller.py    │────>│ setup.sh (one-time)   │
+│ (memory stress)         │     │ (dynamic control)│     │ (Zswap/cgroup config) │
+└─────────────────────────┘     └──────────────────┘     └───────────────────────┘
                               │
                               ▼
                     ┌──────────────────┐
@@ -34,11 +34,11 @@ The goal is to prove that compressing data in memory allows the system to hold m
 | Zswap Controller | `controller.py` | Monitors PSI/CPU, dynamically adjusts compression pool (5-50%) |
 | NUMA Monitor | `numa_monitor.c` | Per-node memory, PSI, migration stats (high performance) |
 | Adaptive Compressor | `adaptive_compressor.c` | Cycles through lzo/lz4/zstd based on system metrics |
-| Memory Workload | `workload.py` | Generates pressure by allocating blocks, modifying data |
+| Memory Workload | `memory_workload.py` | Generates pressure by allocating blocks, modifying data |
 | Memory Workload (C) | `allocate_memory.c` | High-performance memory allocator with configurable size |
 | CPU Workload | `cpu_workload.py` | Controlled CPU contention (0-100%) with Python-based workers |
-| StressNG Workload | `stressng_workload.py` | Synthetic sweep testing with pattern/contention variables |
-| Real Workloads | `real_workloads.py` | Redis benchmark and llama.cpp inference managers |
+| StressNG Memory Workload | `stressng_memory_workload.py` | Synthetic sweep testing with pattern/contention variables |
+| Real Memory Workloads | `real_memory_workloads.py` | Redis benchmark and llama.cpp inference managers |
 | Logger | `logger.py` | Logs metrics to `movement_avoidance_results.csv` |
 | Visualization | `visualize.py` | Creates matplotlib charts from CSV data |
 | Setup | `setup.sh` | Enables Zswap, sets cgroup limits, NUMA topology detection |
@@ -215,7 +215,7 @@ sudo ./controller -h
 
 ### StressNG Workload
 ```bash
-python3 stressng_workload.py -h
+python3 stressng_memory_workload.py -h
 # Options:
 #   -d, --duration SECONDS   Duration per test
 #   -m, --memory GB          Memory to allocate
@@ -243,7 +243,7 @@ The C implementations (`numa_monitor.c`, `adaptive_compressor.c`, `controller.c`
 
 On NUMA systems:
 - Per-node cgroups are created at `/sys/fs/cgroup/memory/movement_avoidance_test/node0`
-- Run workload on specific node: `sudo cgexec -g memory:movement_avoidance_test/node0 python3 workload.py`
+- Run workload on specific node: `sudo cgexec -g memory:movement_avoidance_test/node0 python3 memory_workload.py`
 - Monitor NUMA status: `gcc -O3 -o numa_monitor numa_monitor.c && sudo ./numa_monitor`
 
 ## Cleaning Up
