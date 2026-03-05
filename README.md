@@ -2,6 +2,17 @@
 
 This project demonstrates memory compression for expanding system capacity by avoiding data movement to slow storage devices. It uses Zswap (Linux kernel compression) combined with dynamic pressure-based control and NUMA-aware optimizations.
 
+## Todo
+- Fix errors on visualize.py
+- Perhaps add script/make file to simplify calling of all needed compilers and commands
+- Remove persistent WARNING: system is swapping to disk from controller, once it starts swapping around 0.5% mem pressure, it doesn't stop until after the pressure drops to 0.
+- Refactor logger to be part of the controller, expose a function rather than calling a command line python file
+
+### Small bugs
+- Controller outputs -0.0% CPU usage sometimes.
+- Modern distributions disable global pip usage, need to change readme to python3-xyz packages from apt.
+
+
 ## Project Overview
 
 The goal is to prove that compressing data in memory allows the system to hold more data without using the slow hard drive. We call this expanding capacity to avoid movement.
