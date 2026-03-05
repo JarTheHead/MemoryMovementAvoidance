@@ -42,23 +42,25 @@ class MovementAvoidanceController:
             with open("/proc/pressure/memory", "r") as f:
                 lines = f.readlines()
 
-            # Parse the "some" line which indicates memory pressure
-            for line in lines:
-                if line.startswith("some"):
-                    # Format: some avg10=0.00 avg60=0.00 avg300=0.00 total=12345
-                    parts = line.strip().split()
-                    for part in parts:
-                        if part.startswith("avg10="):
-                            pressure = float(part.split("=")[1])
-                            return pressure
+                # Parse the "some" line which indicates memory pressure
+                for line in lines:
+                    if line.startswith("some"):
+                        # Format: some avg10=0.00 avg60=0.00 avg300=0.00 total=12345
+                        parts = line.strip().split()
+                        for part in parts:
+                            if part.startswith("avg10="):
+                                pressure = float(part.split("=")[1])
+                                return pressure
+
+            print("Failed to retrieve memory pressure")
+            return 0.0
+
         except FileNotFoundError:
             print("Warning: /proc/pressure/memory not found. Using alternative metrics.")
             return self.get_alternative_memory_pressure()
         except Exception as e:
             print(f"Error reading PSI: {e}")
             return 0.0
-
-        return 0.0
 
     def get_alternative_memory_pressure(self):
         """Alternative method to estimate memory pressure"""
