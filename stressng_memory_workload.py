@@ -101,14 +101,6 @@ class StressNGWorkload:
             "--metrics",              # Show metrics
         ]
 
-        # Add pattern-specific options
-        if pattern == "random":
-            cmd.extend(["--vm-hint", "random"])
-        elif pattern == "hot":
-            cmd.extend(["--vm-hint", "hot"])
-        elif pattern == "cold":
-            cmd.extend(["--vm-hint", "cold"])
-
         # Add CPU workers for contention
         if worker_count > 0:
             cmd.extend(["--cpu", str(worker_count)])
