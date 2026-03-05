@@ -14,19 +14,39 @@ def visualize_results(csv_file="movement_avoidance_results.csv"):
         print(f"Error: {csv_file} not found. Run tests first.")
         return
 
-    # Read the CSV data
+    # Read CSV (try header first)
     df = pd.read_csv(csv_file)
 
-    # Convert Time column to datetime
-    df['Time'] = pd.to_datetime(df['Time'])
+    # If CSV has no header, reload with header=None and assign names
+    if 'Time' not in df.columns:
+        df = pd.read_csv(csv_file, header=None)
+        df.columns = [
+            "Time",
+            "Memory_Pressure",
+            "CPU_Pressure",
+            "Swap_Activity",
+            "Compression_Ratio",
+            "Node0_Free",
+            "Node1_Free",
+            "NUMA_Miss_Rate",
+            "Algorithm",
+            "Extra_1",
+            "Extra_2",
+        ]
 
-    # Convert boolean string to numeric for plotting
-    df['Swap_Activity'] = df['Swap_Activity'].map({'True': 1, 'False': 0})
+    # Convert Time column to datetime
+    df['Time'] = pd.to_datetime(df['Time'], errors='coerce')
+    df = df.dropna(subset=['Time'])
+
+    # Convert Swap_Activity safely (handles bools, strings, 0/1)
+    df['Swap_Activity'] = df['Swap_Activity'].map(
+        {True: 1, False: 0, 'True': 1, 'False': 0, 1: 1, 0: 0}
+    ).fillna(0).astype(int)
 
     # Check if we have NUMA columns
     has_numa = 'NUMA_Miss_Rate' in df.columns
     has_algorithm = 'Algorithm' in df.columns
-    has_node_stats = 'Node0_Free' in df.columns
+    has_node_stats = 'Node0_Free' in df.columns and 'Node1_Free' in df.columns
 
     # Create plots based on available data
     if has_numa and has_algorithm:
@@ -69,37 +89,35 @@ def visualize_results(csv_file="movement_avoidance_results.csv"):
             # Per-node compression ratios
             if 'Compression_Ratio_Node0' in df.columns:
                 axes[2, 1].plot(df['Time'], df['Compression_Ratio_Node0'], 'b-', label='Node0 Ratio', linewidth=2)
-                axes[2, 1].plot(df['Time'], df['Compression_Ratio_Node1'], 'c-', label='Node1 Ratio', linewidth=2)
+                if 'Compression_Ratio_Node1' in df.columns:
+                    axes[2, 1].plot(df['Time'], df['Compression_Ratio_Node1'], 'c-', label='Node1 Ratio', linewidth=2)
                 axes[2, 1].set_title('Per-Node Compression Ratios')
                 axes[2, 1].legend()
                 axes[2, 1].tick_params(axis='x', rotation=45)
 
         # Row 4: Algorithm selection over time
-        if has_algorithm:
-            # Convert algorithm names to numeric for plotting
-            algo_mapping = {'lzo': 0, 'lz4': 1, 'zstd': 2}
-            df['Algorithm_Num'] = df['Algorithm'].map(algo_mapping).fillna(1)
-            axes[3, 0].plot(df['Time'], df['Algorithm_Num'], 'purple', label='Algorithm', linewidth=2, marker='o')
-            axes[3, 0].set_yticks([0, 1, 2])
-            axes[3, 0].set_yticklabels(['LZO', 'LZ4', 'ZSTD'])
-            axes[3, 0].set_title('Compression Algorithm Over Time')
-            axes[3, 0].legend()
-            axes[3, 0].tick_params(axis='x', rotation=45)
+        algo_mapping = {'lzo': 0, 'lz4': 1, 'zstd': 2}
+        df['Algorithm_Num'] = df['Algorithm'].map(algo_mapping).fillna(1)
+        axes[3, 0].plot(df['Time'], df['Algorithm_Num'], 'purple', label='Algorithm', linewidth=2, marker='o')
+        axes[3, 0].set_yticks([0, 1, 2])
+        axes[3, 0].set_yticklabels(['LZO', 'LZ4', 'ZSTD'])
+        axes[3, 0].set_title('Compression Algorithm Over Time')
+        axes[3, 0].legend()
+        axes[3, 0].tick_params(axis='x', rotation=45)
 
-            # Algorithm comparison - average metrics per algorithm
-            if len(df['Algorithm'].unique()) > 1:
-                algo_stats = df.groupby('Algorithm').agg({
-                    'Compression_Ratio': 'mean',
-                    'NUMA_Miss_Rate': 'mean',
-                    'Swap_Activity': 'mean'
-                }).reset_index()
+        # Algorithm comparison - average metrics per algorithm
+        if len(df['Algorithm'].dropna().unique()) > 1:
+            algo_stats = df.groupby('Algorithm').agg({
+                'Compression_Ratio': 'mean',
+                'NUMA_Miss_Rate': 'mean',
+                'Swap_Activity': 'mean'
+            }).reset_index()
 
-                axes[3, 1].bar(algo_stats['Algorithm'], algo_stats['Compression_Ratio'], alpha=0.7)
-                axes[3, 1].set_ylabel('Avg Compression Ratio')
-                axes[3, 1].set_title('Algorithm Comparison - Compression Ratio')
-                axes[3, 1].tick_params(axis='x', rotation=45)
+            axes[3, 1].bar(algo_stats['Algorithm'], algo_stats['Compression_Ratio'], alpha=0.7)
+            axes[3, 1].set_ylabel('Avg Compression Ratio')
+            axes[3, 1].set_title('Algorithm Comparison - Compression Ratio')
+            axes[3, 1].tick_params(axis='x', rotation=45)
         else:
-            # Remove unused axis
             fig.delaxes(axes[3, 1])
 
     elif has_numa:
@@ -139,10 +157,11 @@ def visualize_results(csv_file="movement_avoidance_results.csv"):
             axes[2, 0].set_title('Per-Node Free Memory Over Time')
             axes[2, 0].legend()
             axes[2, 0].tick_params(axis='x', rotation=45)
-
-        # Remove unused axes
-        if not has_node_stats:
+        else:
             fig.delaxes(axes[2, 0])
+
+        # Remove unused axes (bottom-right)
+        fig.delaxes(axes[2, 1])
 
     elif has_algorithm:
         # Algorithm-only visualization (3x2 grid)
@@ -173,10 +192,9 @@ def visualize_results(csv_file="movement_avoidance_results.csv"):
         axes[1, 0].tick_params(axis='x', rotation=45)
 
         # Algorithm comparison bar chart
-        if len(df['Algorithm'].unique()) > 1:
+        if len(df['Algorithm'].dropna().unique()) > 1:
             algo_stats = df.groupby('Algorithm').agg({
                 'Compression_Ratio': 'mean',
-                'NUMA_Miss_Rate': 'mean',
                 'Swap_Activity': 'mean'
             }).reset_index()
 
@@ -184,12 +202,17 @@ def visualize_results(csv_file="movement_avoidance_results.csv"):
             axes[1, 1].set_ylabel('Avg Compression Ratio')
             axes[1, 1].set_title('Algorithm Comparison - Compression Ratio')
             axes[1, 1].tick_params(axis='x', rotation=45)
+        else:
+            fig.delaxes(axes[1, 1])
 
         # Swap Activity
         axes[2, 0].plot(df['Time'], df['Swap_Activity'], 'r-', label='Swap Activity', linewidth=2)
         axes[2, 0].set_title('Swap Activity Over Time')
         axes[2, 0].legend()
         axes[2, 0].tick_params(axis='x', rotation=45)
+
+        # Remove unused axis
+        fig.delaxes(axes[2, 1])
 
     else:
         # Original 2x2 grid
@@ -222,8 +245,11 @@ def visualize_results(csv_file="movement_avoidance_results.csv"):
         axes[1, 1].set_title('Compression Ratio vs Swap Activity')
 
     # Rotate x-axis labels for better readability
-    for ax in axes.flat:
-        plt.setp(ax.get_xticklabels(), rotation=45, ha="right")
+    for ax in np.array(axes).ravel():
+        try:
+            plt.setp(ax.get_xticklabels(), rotation=45, ha="right")
+        except Exception:
+            pass
 
     plt.tight_layout()
     plt.show()
@@ -241,7 +267,6 @@ def visualize_results(csv_file="movement_avoidance_results.csv"):
     if has_numa:
         print("\n=== NUMA Statistics ===")
         print(f"Average NUMA Miss Rate: {df['NUMA_Miss_Rate'].mean():.2f}%")
-
         if has_node_stats:
             print(f"Average Node0 Free: {df['Node0_Free'].mean():.2f} MB")
             print(f"Average Node1 Free: {df['Node1_Free'].mean():.2f} MB")
@@ -261,7 +286,6 @@ def visualize_stressng_sweep(json_file=None):
     """Create visualization of stress-ng sweep results"""
 
     if json_file is None:
-        # Find the most recent stressng_sweep file
         import glob
         files = glob.glob("stressng_sweep_*.json")
         if files:
@@ -279,29 +303,23 @@ def visualize_stressng_sweep(json_file=None):
     with open(json_file, 'r') as f:
         data = json.load(f)
 
-    # Create heatmap of results
     results = data.get('results', [])
-
     if not results:
         print("No results found in JSON file")
         return
 
-    # Extract patterns and contentions
     patterns = list(set(r['pattern'] for r in results))
     contentions = sorted(list(set(r['contention'] for r in results)))
 
-    # Create performance matrix
     perf_matrix = np.zeros((len(contentions), len(patterns)))
     for result in results:
         contention_idx = contentions.index(result['contention'])
         pattern_idx = patterns.index(result['pattern'])
         perf_matrix[contention_idx, pattern_idx] = result.get('throughput', 0)
 
-    # Create figure
     fig, axes = plt.subplots(1, 2, figsize=(16, 6))
     fig.suptitle('StressNG Sweep Results - Performance Heatmap', fontsize=14)
 
-    # Heatmap
     im = axes[0].imshow(perf_matrix, cmap='viridis', aspect='auto')
     axes[0].set_xticks(range(len(patterns)))
     axes[0].set_xticklabels(patterns)
@@ -310,12 +328,9 @@ def visualize_stressng_sweep(json_file=None):
     axes[0].set_xlabel('Memory Pattern')
     axes[0].set_ylabel('CPU Contention (%)')
     axes[0].set_title('Throughput (MB/s)')
-
-    # Add colorbar
     plt.colorbar(im, ax=axes[0])
 
-    # Line chart of contentions by pattern
-    for i, pattern in enumerate(patterns):
+    for pattern in patterns:
         pattern_results = [r for r in results if r['pattern'] == pattern]
         pattern_results.sort(key=lambda x: x['contention'])
         contentions_for_plot = [r['contention'] for r in pattern_results]
@@ -330,16 +345,14 @@ def visualize_stressng_sweep(json_file=None):
     plt.tight_layout()
     plt.show()
 
-    # Print summary
     print("\n=== StressNG Sweep Summary ===")
     print(f"Tested {len(results)} configurations")
     successful = sum(1 for r in results if r.get('success', False))
     print(f"Successful: {successful}, Failed: {len(results) - successful}")
 
-    # Find optimal configuration
     if successful > 0:
         best_result = max((r for r in results if r.get('success', False)),
-                         key=lambda x: x.get('throughput', 0))
+                          key=lambda x: x.get('throughput', 0))
         print(f"Best configuration: {best_result['pattern']} pattern, "
               f"{best_result['contention']}% contention")
         print(f"Best throughput: {best_result.get('throughput', 0):.2f} MB/s")
@@ -349,15 +362,13 @@ def main():
     csv_file = "movement_avoidance_results.csv"
     json_file = None
 
-    # Parse arguments
-    for i, arg in enumerate(sys.argv[1:]):
+    for arg in sys.argv[1:]:
         if arg.endswith('.csv'):
             csv_file = arg
         elif arg.endswith('.json'):
             json_file = arg
 
     try:
-        # Check if we have stress-ng JSON file
         if json_file:
             visualize_stressng_sweep(json_file)
         else:
