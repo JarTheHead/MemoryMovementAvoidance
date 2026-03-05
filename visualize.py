@@ -14,19 +14,61 @@ def visualize_results(csv_file="movement_avoidance_results.csv"):
         print(f"Error: {csv_file} not found. Run tests first.")
         return
 
-    # Read the CSV data
+    # Read the CSV data (support both header and no-header files)
     df = pd.read_csv(csv_file)
 
-    # Convert Time column to datetime
-    df['Time'] = pd.to_datetime(df['Time'])
+    # If there is no header, pandas will treat the first row as header.
+    # Detect that by checking for an expected column name.
+    if 'Time' not in df.columns:
+        # Re-read with no header row and assign expected column names.
+        df = pd.read_csv(csv_file, header=None)
 
-    # Convert boolean string to numeric for plotting
-    df['Swap_Activity'] = df['Swap_Activity'].map({'True': 1, 'False': 0})
+        # Default expected columns (based on your current CSV layout)
+        expected_cols = [
+            "Time",
+            "Memory_Pressure",
+            "CPU_Pressure",
+            "Swap_Activity",
+            "Compression_Ratio",
+            "Node0_Free",
+            "Node1_Free",
+            "NUMA_Miss_Rate",
+            "Algorithm",
+            "Extra_1",
+            "Extra_2",
+        ]
+
+        # If the CSV has fewer columns than expected, truncate the list.
+        # If it has more, create generic names for the rest.
+        if df.shape[1] < len(expected_cols):
+            df.columns = expected_cols[:df.shape[1]]
+        elif df.shape[1] > len(expected_cols):
+            df.columns = expected_cols + [
+                f"Extra_{i}" for i in range(3, df.shape[1] - len(expected_cols) + 3)
+            ]
+        else:
+            df.columns = expected_cols
+
+    # Convert Time column to datetime
+    df['Time'] = pd.to_datetime(df['Time'], errors='coerce')
+    df = df.dropna(subset=['Time'])
+
+    # Normalize Swap_Activity to 0/1 (handles bools, strings, 0/1)
+    df['Swap_Activity'] = df['Swap_Activity'].map(
+        {True: 1, False: 0, 'True': 1, 'False': 0, 1: 1, 0: 0}
+    ).fillna(0).astype(int)
+
+    # Ensure numeric columns are numeric (safe conversion)
+    for col in ['Memory_Pressure', 'CPU_Pressure', 'Compression_Ratio', 'NUMA_Miss_Rate', 'Node0_Free', 'Node1_Free']:
+        if col in df.columns:
+            df[col] = pd.to_numeric(df[col], errors='coerce')
 
     # Check if we have NUMA columns
-    has_numa = 'NUMA_Miss_Rate' in df.columns
-    has_algorithm = 'Algorithm' in df.columns
-    has_node_stats = 'Node0_Free' in df.columns
+    has_numa = 'NUMA_Miss_Rate' in df.columns and df['NUMA_Miss_Rate'].notna().any()
+    has_algorithm = 'Algorithm' in df.columns and df['Algorithm'].notna().any()
+    has_node_stats = 'Node0_Free' in df.columns and 'Node1_Free' in df.columns and (
+        df['Node0_Free'].notna().any() or df['Node1_Free'].notna().any()
+    )
 
     # Create plots based on available data
     if has_numa and has_algorithm:
@@ -67,7 +109,7 @@ def visualize_results(csv_file="movement_avoidance_results.csv"):
             axes[2, 0].tick_params(axis='x', rotation=45)
 
             # Per-node compression ratios
-            if 'Compression_Ratio_Node0' in df.columns:
+            if 'Compression_Ratio_Node0' in df.columns and 'Compression_Ratio_Node1' in df.columns:
                 axes[2, 1].plot(df['Time'], df['Compression_Ratio_Node0'], 'b-', label='Node0 Ratio', linewidth=2)
                 axes[2, 1].plot(df['Time'], df['Compression_Ratio_Node1'], 'c-', label='Node1 Ratio', linewidth=2)
                 axes[2, 1].set_title('Per-Node Compression Ratios')
@@ -75,31 +117,28 @@ def visualize_results(csv_file="movement_avoidance_results.csv"):
                 axes[2, 1].tick_params(axis='x', rotation=45)
 
         # Row 4: Algorithm selection over time
-        if has_algorithm:
-            # Convert algorithm names to numeric for plotting
-            algo_mapping = {'lzo': 0, 'lz4': 1, 'zstd': 2}
-            df['Algorithm_Num'] = df['Algorithm'].map(algo_mapping).fillna(1)
-            axes[3, 0].plot(df['Time'], df['Algorithm_Num'], 'purple', label='Algorithm', linewidth=2, marker='o')
-            axes[3, 0].set_yticks([0, 1, 2])
-            axes[3, 0].set_yticklabels(['LZO', 'LZ4', 'ZSTD'])
-            axes[3, 0].set_title('Compression Algorithm Over Time')
-            axes[3, 0].legend()
-            axes[3, 0].tick_params(axis='x', rotation=45)
+        algo_mapping = {'lzo': 0, 'lz4': 1, 'zstd': 2}
+        df['Algorithm_Num'] = df['Algorithm'].map(algo_mapping).fillna(1)
+        axes[3, 0].plot(df['Time'], df['Algorithm_Num'], 'purple', label='Algorithm', linewidth=2, marker='o')
+        axes[3, 0].set_yticks([0, 1, 2])
+        axes[3, 0].set_yticklabels(['LZO', 'LZ4', 'ZSTD'])
+        axes[3, 0].set_title('Compression Algorithm Over Time')
+        axes[3, 0].legend()
+        axes[3, 0].tick_params(axis='x', rotation=45)
 
-            # Algorithm comparison - average metrics per algorithm
-            if len(df['Algorithm'].unique()) > 1:
-                algo_stats = df.groupby('Algorithm').agg({
-                    'Compression_Ratio': 'mean',
-                    'NUMA_Miss_Rate': 'mean',
-                    'Swap_Activity': 'mean'
-                }).reset_index()
+        # Algorithm comparison - average metrics per algorithm
+        if len(df['Algorithm'].unique()) > 1:
+            algo_stats = df.groupby('Algorithm').agg({
+                'Compression_Ratio': 'mean',
+                'NUMA_Miss_Rate': 'mean' if has_numa else 'mean',
+                'Swap_Activity': 'mean'
+            }).reset_index()
 
-                axes[3, 1].bar(algo_stats['Algorithm'], algo_stats['Compression_Ratio'], alpha=0.7)
-                axes[3, 1].set_ylabel('Avg Compression Ratio')
-                axes[3, 1].set_title('Algorithm Comparison - Compression Ratio')
-                axes[3, 1].tick_params(axis='x', rotation=45)
+            axes[3, 1].bar(algo_stats['Algorithm'], algo_stats['Compression_Ratio'], alpha=0.7)
+            axes[3, 1].set_ylabel('Avg Compression Ratio')
+            axes[3, 1].set_title('Algorithm Comparison - Compression Ratio')
+            axes[3, 1].tick_params(axis='x', rotation=45)
         else:
-            # Remove unused axis
             fig.delaxes(axes[3, 1])
 
     elif has_numa:
@@ -139,10 +178,11 @@ def visualize_results(csv_file="movement_avoidance_results.csv"):
             axes[2, 0].set_title('Per-Node Free Memory Over Time')
             axes[2, 0].legend()
             axes[2, 0].tick_params(axis='x', rotation=45)
-
-        # Remove unused axes
-        if not has_node_stats:
+        else:
             fig.delaxes(axes[2, 0])
+
+        # Remove unused axis
+        fig.delaxes(axes[2, 1])
 
     elif has_algorithm:
         # Algorithm-only visualization (3x2 grid)
@@ -176,7 +216,6 @@ def visualize_results(csv_file="movement_avoidance_results.csv"):
         if len(df['Algorithm'].unique()) > 1:
             algo_stats = df.groupby('Algorithm').agg({
                 'Compression_Ratio': 'mean',
-                'NUMA_Miss_Rate': 'mean',
                 'Swap_Activity': 'mean'
             }).reset_index()
 
@@ -184,12 +223,17 @@ def visualize_results(csv_file="movement_avoidance_results.csv"):
             axes[1, 1].set_ylabel('Avg Compression Ratio')
             axes[1, 1].set_title('Algorithm Comparison - Compression Ratio')
             axes[1, 1].tick_params(axis='x', rotation=45)
+        else:
+            fig.delaxes(axes[1, 1])
 
         # Swap Activity
         axes[2, 0].plot(df['Time'], df['Swap_Activity'], 'r-', label='Swap Activity', linewidth=2)
         axes[2, 0].set_title('Swap Activity Over Time')
         axes[2, 0].legend()
         axes[2, 0].tick_params(axis='x', rotation=45)
+
+        # Remove unused axis
+        fig.delaxes(axes[2, 1])
 
     else:
         # Original 2x2 grid
@@ -221,9 +265,17 @@ def visualize_results(csv_file="movement_avoidance_results.csv"):
         axes[1, 1].set_ylabel('Swap Activity (Boolean)')
         axes[1, 1].set_title('Compression Ratio vs Swap Activity')
 
-    # Rotate x-axis labels for better readability
-    for ax in axes.flat:
-        plt.setp(ax.get_xticklabels(), rotation=45, ha="right")
+    # Rotate x-axis labels for better readability (robust across axis shapes)
+    try:
+        ax_list = axes.flat
+    except Exception:
+        ax_list = np.array([axes]).flat
+
+    for ax in ax_list:
+        try:
+            plt.setp(ax.get_xticklabels(), rotation=45, ha="right")
+        except Exception:
+            pass
 
     plt.tight_layout()
     plt.show()
@@ -231,9 +283,12 @@ def visualize_results(csv_file="movement_avoidance_results.csv"):
     # Print summary statistics
     print("\n=== Summary Statistics ===")
     print(f"Total measurements: {len(df)}")
-    print(f"Average Memory Pressure: {df['Memory_Pressure'].mean():.2f}%")
-    print(f"Average CPU Pressure: {df['CPU_Pressure'].mean():.2f}%")
-    print(f"Average Compression Ratio: {df['Compression_Ratio'].mean():.2f}x")
+    if 'Memory_Pressure' in df.columns:
+        print(f"Average Memory Pressure: {df['Memory_Pressure'].mean():.2f}%")
+    if 'CPU_Pressure' in df.columns:
+        print(f"Average CPU Pressure: {df['CPU_Pressure'].mean():.2f}%")
+    if 'Compression_Ratio' in df.columns:
+        print(f"Average Compression Ratio: {df['Compression_Ratio'].mean():.2f}x")
     print(f"Swap Activity Occurred: {df['Swap_Activity'].sum()} times")
     print(f"Times without Swap Activity: {len(df) - df['Swap_Activity'].sum()}")
 
@@ -249,11 +304,12 @@ def visualize_results(csv_file="movement_avoidance_results.csv"):
     # Algorithm-specific statistics
     if has_algorithm:
         print("\n=== Algorithm Statistics ===")
-        algo_stats = df.groupby('Algorithm').agg({
-            'Compression_Ratio': 'mean',
-            'NUMA_Miss_Rate': 'mean',
-            'Swap_Activity': 'mean'
-        })
+        # Only include columns that exist in this CSV
+        agg_map = {'Compression_Ratio': 'mean', 'Swap_Activity': 'mean'}
+        if has_numa:
+            agg_map['NUMA_Miss_Rate'] = 'mean'
+
+        algo_stats = df.groupby('Algorithm').agg(agg_map)
         print(algo_stats.round(3))
 
 
@@ -339,7 +395,7 @@ def visualize_stressng_sweep(json_file=None):
     # Find optimal configuration
     if successful > 0:
         best_result = max((r for r in results if r.get('success', False)),
-                         key=lambda x: x.get('throughput', 0))
+                          key=lambda x: x.get('throughput', 0))
         print(f"Best configuration: {best_result['pattern']} pattern, "
               f"{best_result['contention']}% contention")
         print(f"Best throughput: {best_result.get('throughput', 0):.2f} MB/s")
