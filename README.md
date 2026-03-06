@@ -4,12 +4,12 @@ This project demonstrates memory compression for expanding system capacity by av
 
 ## Todo
 - Fix errors on visualize.py
-- Perhaps add script/make file to simplify calling of all needed compilers and commands
 - Remove persistent WARNING: system is swapping to disk from controller, once it starts swapping around 0.5% mem pressure, it doesn't stop until after the pressure drops to 0.
-- Refactor logger to be part of the controller, expose a function rather than calling a command line python file
 
-### Small bugs
+### Non-critical changes
+- Refactor logger to be part of the controller, expose a function rather than calling a command line python file
 - Controller outputs -0.0% CPU usage sometimes.
+- Update readme to reflect makefile commands
 
 
 ## Project Overview
