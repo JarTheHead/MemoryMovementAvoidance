@@ -10,7 +10,6 @@ This project demonstrates memory compression for expanding system capacity by av
 
 ### Small bugs
 - Controller outputs -0.0% CPU usage sometimes.
-- Modern distributions disable global pip usage, need to change readme to python3-xyz packages from apt.
 
 
 ## Project Overview
@@ -67,19 +66,19 @@ The goal is to prove that compressing data in memory allows the system to hold m
 ## Prerequisites
 
 - Linux kernel 4.8+ (Zswap requirement)
-- Python 3.x with psutil library (`pip install psutil`)
 - cgroup tools (`sudo apt install cgroup-tools` on Ubuntu/Debian)
-- For visualization: matplotlib and pandas (`pip install matplotlib pandas`)
+- Python 3.x with psutil library (`sudo apt install python3-psutil`)
+- For visualization: matplotlib and pandas (`sudo apt install python3-matplotlib python3-pandas`)
 - stress-ng (optional, for synthetic testing: `sudo apt install stress-ng`)
 
 ## Installation
 
 1. Install required packages:
-   ```bash
-   sudo apt update
-   sudo apt install cgroup-tools python3-pip stress-ng
-   pip3 install psutil matplotlib pandas
-   ```
+```bash
+sudo apt update
+sudo apt upgrade
+sudo apt install cgroup-tools stress-ng python3-psutil python3-matplotlib python3-pandas
+```
 
 2. Clone or download this project
 
