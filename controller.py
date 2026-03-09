@@ -24,6 +24,18 @@ class MovementAvoidanceController:
 
         # Initialize compression ratio tracking
         self.last_compression_ratio = 1.0
+        
+        # Initialize algorithm tracking
+        self.current_algorithm = "lz4"
+        try:
+            with open(self.zswap_compressor_path, "r") as f:
+                content = f.read().strip()
+                self.current_algorithm = content.replace("[", "").replace("]", "")
+        except Exception:
+            pass
+
+        # Initialize swap counters for delta tracking
+        self.last_pswpin, self.last_pswpout = self._get_raw_swap_stats()
 
         # NUMA-aware decision thresholds
         self.numa_pressure_threshold = 30  # NUMA miss rate threshold (%)
@@ -33,6 +45,20 @@ class MovementAvoidanceController:
         # Check for NUMA topology
         self.numa_nodes = self._detect_numa_nodes()
         self.is_numa_system = len(self.numa_nodes) > 1
+
+    def _get_raw_swap_stats(self):
+        """Read raw pswpin/pswpout values from /proc/vmstat"""
+        pswpin, pswpout = 0, 0
+        try:
+            with open("/proc/vmstat", "r") as f:
+                for line in f:
+                    if line.startswith("pswpin"):
+                        pswpin = int(line.strip().split()[1])
+                    elif line.startswith("pswpout"):
+                        pswpout = int(line.strip().split()[1])
+        except Exception as e:
+            print(f"Error reading swap stats: {e}")
+        return pswpin, pswpout
 
     def _detect_numa_nodes(self):
         """Detect NUMA nodes by scanning /sys/devices/system/node"""
@@ -74,26 +100,21 @@ class MovementAvoidanceController:
 
     def get_cpu_usage(self):
         """Get current CPU usage percentage"""
-        return psutil.cpu_percent(interval=1)
+        usage = psutil.cpu_percent(interval=1)
+        # Fix for -0.0 and very small values
+        return max(0.0, usage)
 
     def get_swap_activity(self):
-        """Check if system is swapping to disk"""
-        try:
-            with open("/proc/vmstat", "r") as f:
-                lines = f.readlines()
-
-            for line in lines:
-                if line.startswith("pswpin") or line.startswith("pswpout"):
-                    # These counters increment when swapping occurs
-                    parts = line.strip().split()
-                    if len(parts) >= 2:
-                        value = int(parts[1])
-                        if value > 0:
-                            return True
-        except Exception as e:
-            print(f"Error checking swap activity: {e}")
-
-        return False
+        """Check if system is swapping to disk since last check"""
+        curr_in, curr_out = self._get_raw_swap_stats()
+        
+        # Check if values increased
+        is_swapping = (curr_in > self.last_pswpin) or (curr_out > self.last_pswpout)
+        
+        # Update markers
+        self.last_pswpin, self.last_pswpout = curr_in, curr_out
+        
+        return is_swapping
 
     def adjust_compression(self, increase=True):
         """Adjust compression settings based on system load"""
@@ -227,6 +248,7 @@ class MovementAvoidanceController:
         try:
             with open(self.zswap_compressor_path, "w") as f:
                 f.write(algorithm)
+            self.current_algorithm = algorithm
             return True
         except PermissionError:
             print("Error: Permission denied. Run as root to change compressor.")
@@ -250,42 +272,30 @@ class MovementAvoidanceController:
         else:
             return "lz4"
 
-    def log_status(self, logger_script="./logger.py"):
-        """Call logger to record current status with NUMA and algorithm info"""
+    def log_status(self, metrics):
+        """Log current status using pre-calculated metrics"""
         try:
-            mem_pressure = self.read_psi_memory()
-            cpu_usage = self.get_cpu_usage()
-            swap_active = self.get_swap_activity()
-            compression_ratio = self.get_compression_ratio()
+            # Extract Node0 and Node1 free memory in MB
+            node0_free = 0
+            node1_free = 0
+            
+            if self.is_numa_system:
+                node0_stats = self.get_node_memory_stats(0)
+                node1_stats = self.get_node_memory_stats(1)
+                node0_free = node0_stats.get("MemFree", 0) / 1024
+                node1_free = node1_stats.get("MemFree", 0) / 1024
 
-            # Get NUMA stats
-            numa_miss_rate = self.get_numa_miss_rate() if self.is_numa_system else 0.0
-            per_node_pressure = self.get_per_node_pressure() if self.is_numa_system else {}
-
-            # Get current algorithm
-            algorithm = "lz4"
-            try:
-                with open(self.zswap_compressor_path, "r") as f:
-                    content = f.read().strip()
-                    algorithm = content.replace("[", "").replace("]", "")
-            except Exception:
-                pass
-
-            # Extract Node0 and Node1 free memory
-            node0_free = per_node_pressure.get("Node0", 0) * 1024 if "Node0" in per_node_pressure else 0
-            node1_free = per_node_pressure.get("Node1", 0) * 1024 if "Node1" in per_node_pressure else 0
-
-            # Call the logger module directly instead of using subprocess
+            # Call the logger module directly
             logger.log_metrics(
                 timestamp=str(datetime.now()),
-                mem_pressure=mem_pressure,
-                cpu_pressure=cpu_usage,
-                swap_activity=swap_active,
-                compression_ratio=compression_ratio,
+                mem_pressure=metrics['mem_pressure'],
+                cpu_pressure=metrics['cpu_usage'],
+                swap_activity=metrics['swap_active'],
+                compression_ratio=metrics['compression_ratio'],
                 node0_free=node0_free,
                 node1_free=node1_free,
-                numa_miss_rate=numa_miss_rate,
-                algorithm=algorithm,
+                numa_miss_rate=metrics.get('numa_miss_rate', 0.0),
+                algorithm=self.current_algorithm,
                 cr_node0=1.0,  # Compression ratio node 0 (placeholder)
                 cr_node1=1.0   # Compression ratio node 1 (placeholder)
             )
@@ -361,27 +371,30 @@ class MovementAvoidanceController:
             # High CPU usage -> decrease compression to reduce load
             print("High CPU usage - decreasing compression to reduce load")
             self.adjust_compression(increase=False)
-        elif swap_active:
+        
+        if swap_active:
             # Swapping detected - log warning
             print("WARNING: System is swapping to disk - movement avoidance failed!")
 
         # Try to set optimal algorithm if available
-        if optimal_algorithm != "lz4":
+        if optimal_algorithm != self.current_algorithm:
             available = self.get_available_compressors()
-            if optimal_algorithm in available and self.current_algorithm != optimal_algorithm:
+            if optimal_algorithm in available:
                 self.set_compression_algorithm(optimal_algorithm)
 
-        # Log current status
-        self.log_status()
-
-        return {
+        # Gather metrics for logging
+        metrics = {
             "mem_pressure": mem_pressure,
             "cpu_usage": cpu_usage,
             "swap_active": swap_active,
             "compression_ratio": compression_ratio,
-            "numa_miss_rate": numa_miss_rate,
-            "algorithm": self.get_available_compressors()[0] if self.get_available_compressors() else "lz4"
+            "numa_miss_rate": numa_miss_rate
         }
+
+        # Log current status
+        self.log_status(metrics)
+
+        return metrics
 
     def run_loop(self, iterations=None):
         """Run the main controller loop"""
