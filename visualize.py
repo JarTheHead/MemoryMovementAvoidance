@@ -14,34 +14,58 @@ def visualize_results(csv_file="movement_avoidance_results.csv"):
         print(f"Error: {csv_file} not found. Run tests first.")
         return
 
-    # Read CSV (try header first)
-    df = pd.read_csv(csv_file)
+    try:
+        # Read CSV (try header first)
+        df = pd.read_csv(csv_file)
+        
+        if df.empty:
+            print(f"Error: {csv_file} is empty. Run tests to generate data.")
+            return
 
-    # If CSV has no header, reload with header=None and assign names
-    if 'Time' not in df.columns:
-        df = pd.read_csv(csv_file, header=None)
-        df.columns = [
-            "Time",
-            "Memory_Pressure",
-            "CPU_Pressure",
-            "Swap_Activity",
-            "Compression_Ratio",
-            "Node0_Free",
-            "Node1_Free",
-            "NUMA_Miss_Rate",
-            "Algorithm",
-            "Extra_1",
-            "Extra_2",
-        ]
+        # Improved header detection
+        expected_cols = ['Time', 'Memory_Pressure', 'CPU_Pressure']
+        if not all(col in df.columns for col in expected_cols):
+            print("CSV missing headers, attempting to assign them...")
+            df = pd.read_csv(csv_file, header=None)
+            df.columns = [
+                "Time",
+                "Memory_Pressure",
+                "CPU_Pressure",
+                "Swap_Activity",
+                "Compression_Ratio",
+                "Node0_Free",
+                "Node1_Free",
+                "NUMA_Miss_Rate",
+                "Algorithm",
+                "Extra_1",
+                "Extra_2",
+            ][:len(df.columns)]
 
-    # Convert Time column to datetime
-    df['Time'] = pd.to_datetime(df['Time'], errors='coerce')
-    df = df.dropna(subset=['Time'])
+        # Convert Time column to datetime
+        df['Time'] = pd.to_datetime(df['Time'], errors='coerce')
+        df = df.dropna(subset=['Time'])
+        
+        if df.empty:
+            print("Error: No valid data found after parsing timestamps.")
+            return
 
-    # Convert Swap_Activity safely (handles bools, strings, 0/1)
-    df['Swap_Activity'] = df['Swap_Activity'].map(
-        {True: 1, False: 0, 'True': 1, 'False': 0, 1: 1, 0: 0}
-    ).fillna(0).astype(int)
+        # Ensure numeric types
+        numeric_cols = ['Memory_Pressure', 'CPU_Pressure', 'Compression_Ratio', 'NUMA_Miss_Rate']
+        for col in numeric_cols:
+            if col in df.columns:
+                df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0)
+
+        # Convert Swap_Activity safely (handles bools, strings, 0/1)
+        if 'Swap_Activity' in df.columns:
+            df['Swap_Activity'] = df['Swap_Activity'].map(
+                {True: 1, False: 0, 'True': 1, 'False': 0, 1: 1, 0: 0, '1': 1, '0': 0}
+            ).fillna(0).astype(int)
+        else:
+            df['Swap_Activity'] = 0
+
+    except Exception as e:
+        print(f"Error processing CSV: {e}")
+        return
 
     # Check if we have NUMA columns
     has_numa = 'NUMA_Miss_Rate' in df.columns
