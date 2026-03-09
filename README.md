@@ -1,18 +1,35 @@
 # Memory Movement Avoidance Project
 
 This project demonstrates memory compression for expanding system capacity by avoiding data movement to slow storage devices. It uses Zswap (Linux kernel compression) combined with dynamic pressure-based control and NUMA-aware optimizations.
-
 ## Todo
-- Fix errors on visualize.py
-- Remove persistent WARNING: system is swapping to disk from controller, once it starts swapping around 0.5% mem pressure, it doesn't stop until after the pressure drops to 0.
+- Add more real-world memory-intensive workloads (e.g. database indexing)
+- Implement auto-tuning for the PSI pressure thresholds
 
 ### Non-critical changes
-- Refactor logger to be part of the controller, expose a function rather than calling a command line python file
-- Controller outputs -0.0% CPU usage sometimes.
-- Update readme to reflect makefile commands
+- Optimize C controller for even lower overhead on small systems
+- Add support for multiple NUMA nodes (>2)
 
 
 ## Project Overview
+...
+## Installation
+...
+### Makefile Commands (Convenience)
+
+The project includes a `makefile` to simplify common operations:
+
+| Command | Description |
+|-----------|-------------|
+| `make install` | Install all system dependencies (requires sudo) |
+| `make setup` | Run the `setup.sh` script to configure zswap and cgroups |
+| `make start` | Start the memory controller (runs as sudo) |
+| `make visualize` | Generate charts from the results CSV |
+| `make memory_workload` | Run the Python memory stress test |
+| `make cpu_workload` | Run the CPU contention stress test |
+| `make allocate4G` | Run the high-performance C allocator (4GB) |
+| `make clean` | Remove compiled binaries |
+
+## Running the Project
 
 The goal is to prove that compressing data in memory allows the system to hold more data without using the slow hard drive. We call this expanding capacity to avoid movement.
 
