@@ -6,6 +6,7 @@ import subprocess
 import psutil
 from datetime import datetime
 
+import logger  # Add the logger module
 
 class MovementAvoidanceController:
     def __init__(self):
@@ -17,6 +18,9 @@ class MovementAvoidanceController:
         if not os.path.exists(self.zswap_enabled_path):
             print("Error: Zswap not available on this system")
             exit(1)
+
+        # Initialize the log file and write headers
+        logger.initialize_log()
 
         # Initialize compression ratio tracking
         self.last_compression_ratio = 1.0
@@ -271,21 +275,20 @@ class MovementAvoidanceController:
             node0_free = per_node_pressure.get("Node0", 0) * 1024 if "Node0" in per_node_pressure else 0
             node1_free = per_node_pressure.get("Node1", 0) * 1024 if "Node1" in per_node_pressure else 0
 
-            # Call logger with extended metrics
-            subprocess.run([
-                "python3", logger_script,
-                str(datetime.now()),
-                str(mem_pressure),
-                str(cpu_usage),
-                str(swap_active),
-                str(compression_ratio),
-                str(node0_free),
-                str(node1_free),
-                str(numa_miss_rate),
-                algorithm,
-                str(1.0),  # Compression ratio node 0 (placeholder)
-                str(1.0),  # Compression ratio node 1 (placeholder)
-            ])
+            # Call the logger module directly instead of using subprocess
+            logger.log_metrics(
+                timestamp=str(datetime.now()),
+                mem_pressure=mem_pressure,
+                cpu_pressure=cpu_usage,
+                swap_activity=swap_active,
+                compression_ratio=compression_ratio,
+                node0_free=node0_free,
+                node1_free=node1_free,
+                numa_miss_rate=numa_miss_rate,
+                algorithm=algorithm,
+                cr_node0=1.0,  # Compression ratio node 0 (placeholder)
+                cr_node1=1.0   # Compression ratio node 1 (placeholder)
+            )
         except Exception as e:
             print(f"Error logging status: {e}")
 
