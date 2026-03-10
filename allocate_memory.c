@@ -51,9 +51,8 @@ int main(int argc, char **argv) {
 
     // calculate num_blocks and display configuration to user
     int num_blocks = DIV_ROUND_UP(limit, block_size);
-    printf("Limit: %.3lG, Block size: %.3lG, Num blocks: %.3G\n",
-            (double)limit, (double)block_size, (double)num_blocks);
-    getchar(); // wait for user to press a key
+    printf("Limit: %.3f, Block size: %.3f, Num blocks: %d\n",
+        (double)limit, (double)block_size, num_blocks);
     
 
     // allocate the blocks, fill with random numbers
