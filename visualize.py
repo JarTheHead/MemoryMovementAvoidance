@@ -251,8 +251,10 @@ def visualize_results(csv_file="movement_avoidance_results.csv"):
         except Exception:
             pass
 
-    plt.tight_layout()
-    plt.show()
+    output_file = "stressng_results.png"
+    plt.savefig(output_file, dpi=300, bbox_inches="tight")
+    print(f"Graph saved to {output_file}")
+    plt.close()
 
     # Print summary statistics
     print("\n=== Summary Statistics ===")
@@ -342,8 +344,10 @@ def visualize_stressng_sweep(json_file=None):
     axes[1].set_title('Throughput vs CPU Contention by Pattern')
     axes[1].legend()
 
-    plt.tight_layout()
-    plt.show()
+    output_file = "stressng_results.png"
+    plt.savefig(output_file, dpi=300, bbox_inches="tight")
+    print(f"Graph saved to {output_file}")
+    plt.close()
 
     print("\n=== StressNG Sweep Summary ===")
     print(f"Tested {len(results)} configurations")
